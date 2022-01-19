@@ -25,7 +25,6 @@
 #include "ns3/queue.h"
 #include "ns3/timely-sender.h"
 #include "ns3/timely-receiver.h"
-#include "ns3/monzatcp-control.h"
 #include "ns3/timely-sender-receiver-helper.h"
 
 #define DEBUG_CONDITION_ false // m_appId == 20 //&& Simulator::Now().GetMilliSeconds() > 1017
@@ -34,7 +33,7 @@
 using namespace ns3;
 
 enum CC_MODE {
-	_MONZATCP, _TIMELY, _PFABRIC /* NORMAL TCP! */
+	_TIMELY, _TCPBASED /* == NORMAL TCP! */
 };
 
 static void _log_tx(Ptr<const Packet> pkt, const TcpHeader &tHeader, Ptr<const TcpSocketBase> tcpSoc) {
@@ -53,16 +52,15 @@ static void _log_rto(Time oldVal, Time newVal) {
 
 class FlowGenerator : public Application {
 	CC_MODE					m_mode;
-	bool					m_high;						// True if HIGH priority
 
 	Ptr<TimelySender> 		m_timelyApp;					// Associated low priority Timely App
 	Ptr<Socket>	 			m_tcpSocket;					// Associated socket
-	Ptr<MonzatcpControl> 	m_monzaCntrl;					// Take care of sending and recving the announcements in TCP mode.
 
 
-	uint32_t				m_initialAckNumber;			// first ACK number rcvd in low priority traffic
+	uint32_t				m_initialAckNumber;				// first ACK number rcvd in low priority traffic
 
 	Address		 			m_peer;							// Peer address
+	DataRate 				m_cbrRate;						// connection rate
 
 	bool					m_connected;					// True if connected
 	bool					m_offPeriod;					// true: no active burst!
@@ -70,7 +68,7 @@ class FlowGenerator : public Application {
 	EventId		 			m_startStopEvent;				// Event id for next start or stop event
 	EventId		 			m_sendEvent;					// Event id of pending "send packet" event
 	EventId					m_poissonArrival;				// Event id for next burst arrival
-	EventId					m_generateEvent;							// Event id for the length of a pending burst arrival
+	EventId					m_generateEvent;				// Event id for the length of a pending burst arrival
 
 	
 	double													m_meanBurstArrivals;
@@ -95,7 +93,6 @@ public:
 	static uint8_t 	*RANDOM_BUFFER;
 	static uint32_t _GVAR_ORACLE_BUFFER_OCCUPANCY;
 	static uint32_t _GVAR_ONGOING_BURSTS;
-	static uint32_t _GVAR_COMPLETED_BURSTS_HP;
 	static uint32_t _GVAR_COMPLETED_BURSTS_LP;
 	static double _GVAR_LOG_START;
 	static double _GVAR_LOG_END;
@@ -105,26 +102,15 @@ public:
 		m_errLogger = errLogger;
 	}
 
-
-	// MonzaTcp
-	FlowGenerator	(Ptr<Socket> socket, uint32_t appId, Ptr<MonzatcpControl> cntrl,
-					Address remote, std::string bDistro, bool isHigh) : FlowGenerator (appId, bDistro, isHigh) {
-		m_mode = _MONZATCP;
-		m_tcpSocket = socket;
-		m_monzaCntrl = cntrl;
-		m_peer = remote;
-	}
-
 	// pFabric / tcp / dctcp
-	FlowGenerator	(Ptr<Socket> soc, uint32_t appId, Address remote, std::string bDistro) : FlowGenerator (appId, bDistro, false) {
-
-		m_mode = _PFABRIC; 
+	FlowGenerator	(Ptr<Socket> soc, uint32_t appId, Address remote, std::string bDistro, std::string connectionrate) : FlowGenerator (appId, bDistro, connectionrate) {
+		m_mode = _TCPBASED; 
 		m_tcpSocket = soc;
 		m_peer = remote;
 	}
 
 	// Timely
-	FlowGenerator	(Ptr<TimelySender> app, uint32_t appId, std::string bDistro, bool isHigh) : FlowGenerator (appId, bDistro, isHigh) {
+	FlowGenerator	(Ptr<TimelySender> app, uint32_t appId, std::string bDistro, std::string connectionrate) : FlowGenerator (appId, bDistro, connectionrate) {
 		m_mode = _TIMELY;
 		m_timelyApp = app;
 	}
@@ -138,7 +124,6 @@ public:
 		m_timelyApp = NULL;
 
 		m_tcpSocket = NULL;
-		m_monzaCntrl = NULL;
 	}
 
 	bool JobIsDone() {
@@ -202,8 +187,7 @@ protected:
 	}
 
 private:
-	FlowGenerator (uint32_t appId, std::string bDistro, bool isHigh) {
-		m_high = isHigh;
+	FlowGenerator (uint32_t appId, std::string bDistro, std::string cbrRate) {
 		m_appId = appId;
 		m_connected = false;
 		m_lastStartTime = Seconds (0);
@@ -222,6 +206,7 @@ private:
 		FillInDistro(bDistro);
 		setupRandomBuffer();
 		m_retransmitCnt = 0;
+		m_cbrRate = DataRate(cbrRate);
 	}
 
 	void FillInDistro(std::string fileName){
@@ -289,7 +274,7 @@ private:
 
 	void TcpCheckFinishedBurst (uint32_t oldAck, uint32_t newAck){
 		m_lastAckRcvd = Simulator::Now();
-		if(m_mode != _MONZATCP && m_mode != _PFABRIC) throw -1;
+		if(m_mode != _TCPBASED) throw -1;
 		if(m_initialAckNumber == 0) { // first ACK of the connection
 			m_initialAckNumber = newAck;
 			return;
@@ -298,7 +283,7 @@ private:
 		ackBytes = (newAck - m_initialAckNumber);
 
 		if(DEBUG_CONDITION_){
-			std::cout << Simulator::Now ().GetMilliSeconds() << "ms) checkFinishBurst p:" << m_high << ", bytesToSent:" << m_bytesToBeSent << ", ackN: " << ackBytes << ", total:" << m_totalBytes << std::endl;
+			std::cout << Simulator::Now ().GetMilliSeconds() << "ms) checkFinishBurst p:" << ", bytesToSent:" << m_bytesToBeSent << ", ackN: " << ackBytes << ", total:" << m_totalBytes << std::endl;
 		}
 
 		if(ackBytes >= (m_totalBytes)){
@@ -308,7 +293,7 @@ private:
 	}
 
 	void StartApplication() {
-		if(m_mode == _MONZATCP || m_mode == _PFABRIC){
+		if(m_mode == _TCPBASED){
 			static uint local_port = 30000;
 			Address localpoint (InetSocketAddress (local_port++));
 
@@ -316,7 +301,7 @@ private:
 			if(handle == 0 && m_tcpSocket->Connect (m_peer) == 0){
 				ConnectionSucceeded();
 			} else {
-				std::cout << "_MONZATCP connect was not successfull! " << m_appId << std::endl; exit(110);
+				std::cout << "_TCP connect was not successfull! " << m_appId << std::endl; exit(110);
 			}
 		} else { // Timely connection has been already started!
 			ConnectionSucceeded();
@@ -325,7 +310,7 @@ private:
 
 	void StopApplication() {
 		CancelEvents ();
-		if(m_mode == _MONZATCP || m_mode == _PFABRIC) {
+		if(m_mode == _TCPBASED) {
 			if(m_tcpSocket) m_tcpSocket->Close ();
 		}
 		m_connected = false;
@@ -379,9 +364,6 @@ private:
 		CancelEvents (); // Insure no pending event
 		m_connected = true;
 		m_generateEvent = Simulator::Schedule(Seconds(0.0), &FlowGenerator::GenerateBurst, this);
-		if(m_mode == _MONZATCP) {
-			m_tcpSocket->SetAttribute("SimulationId", UintegerValue(m_appId));
-		}
 	}
 
 	// uint32_t GetNewBurstLength(){
@@ -429,13 +411,6 @@ private:
 	void StartBurst() {
 		if(!m_offPeriod) {std::cout << "Invalid m_offpriod";m_errLogger("invalid state"); exit(1);}
 		if(!m_connected) {std::cout << "Invalid connected"; m_errLogger("invalid state"); exit(1);}
-
-		if(m_high && _GVAR_COMPLETED_BURSTS_HP * 10 > _GVAR_COMPLETED_BURSTS_LP) { // stop generating hp flows too fast!
-			Time delayToNextBurst = Seconds (m_expRandomVar->GetValue());
-			m_poissonArrival = Simulator::Schedule(delayToNextBurst, &FlowGenerator::StartBurst, this);
-			return;
-		}
-
 		
 		m_lastStartTime = Simulator::Now();
 		m_offPeriod = false;
@@ -443,11 +418,7 @@ private:
 		_GVAR_ONGOING_BURSTS++;
 		m_totalBytes += m_bytesToBeSent;
 
-		if(m_mode == _MONZATCP) {
-			ScheduleNextTx();
-			if(m_high)
-				m_monzaCntrl ->StartHighPriority(m_bytesToBeSent, m_tcpSocket);
-		} else if(m_mode == _PFABRIC) {
+		if(m_mode == _TCPBASED) {
 			ScheduleNextTx();
 		} else if(m_mode == _TIMELY) {
 			m_timelyApp->SetAttribute("SendData", UintegerValue(m_bytesToBeSent));
@@ -480,15 +451,10 @@ private:
 		}
 
 		_GVAR_ONGOING_BURSTS--;
-		if(m_high) {
-			_GVAR_COMPLETED_BURSTS_HP++;
-		} else
-			_GVAR_COMPLETED_BURSTS_LP++;
+		_GVAR_COMPLETED_BURSTS_LP++;
 
 		std::string bType = "burst";
-		if(m_high)
-			bType = "pBurst";
-		
+
 		if(m_lastStartTime.GetSeconds() >= _GVAR_LOG_START && m_lastStartTime.GetSeconds() < _GVAR_LOG_END)
 			m_logger(bType, 2, "int64 time:", (Simulator::Now() - m_lastStartTime).GetMicroSeconds(), "uint size:", m_lastBurstSize);
 
@@ -504,12 +470,10 @@ private:
 	 */
 	void ScheduleNextTx() {
 		if(!m_connected) throw -1;
-		if(m_offPeriod) {std::cout << "scheduleNext Invaild: h:" << m_high << ", appId:" << m_appId << std::endl; exit(-1);};
-		if(m_mode != _MONZATCP && m_mode != _PFABRIC) throw -1;
+		if(m_offPeriod) {std::cout << "scheduleNext Invaild, appId:" << m_appId << std::endl; exit(-1);};
+		if(m_mode != _TCPBASED) throw -1;
 
-		DataRate cbrRate("10Gbps");
-		Time nextTime (Seconds (1078 * 8 / static_cast<double>(cbrRate.GetBitRate())));
-
+		Time nextTime (Seconds (1078 * 8 / static_cast<double>(m_cbrRate.GetBitRate())));
 		m_sendEvent = Simulator::Schedule(nextTime, &FlowGenerator::TcpSendPacket, this);
 	}
 

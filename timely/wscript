@@ -16,7 +16,6 @@ def build(bld):
 			'model/timely-header.cc',
 			'model/timely-receiver.cc',
 			'model/timely-sender.cc',
-			'model/timely-control.cc',
 			'helper/timely-sender-receiver-helper.cc'
         ]
 
@@ -30,8 +29,6 @@ def build(bld):
 			'model/timely-header.h',
 			'model/timely-receiver.h',
 			'model/timely-sender.h',
-            'model/timely-control.h',
-			'model/timely-packet-filter.h',
 			'helper/timely-sender-receiver-helper.h'
     ]
 

@@ -2,13 +2,10 @@
 #define COMMON_LEAFSPINE_H
 
 enum CongestionType{
-	MONZA_TCP = 1,
-	MONZA_DCTCP = 2,
 	PFABRIC = 3,
 	TCP = 4,
 	DCTCP = 5,
 	TIMELY = 6,
-	MONZA_TIMELY = 7
 };
 
 enum SWITCH_TYPE {
@@ -17,51 +14,37 @@ enum SWITCH_TYPE {
 	H2TOR
 };
 
-
-#ifdef __APPLE__
-	const std :: string _TRACE_FOLDER	= 		"/Users/ali/Desktop/traces/";
-	const std :: string _BURST_FOLDER 	= 		"/Users/ali/Desktop/buffer/source/simulation/bursts/";
-	const std :: string _MGRUP_FOLDER 	= 		"/Users/ali/Desktop/buffer/source/simulation/mgroups/";
-#else
-	const std :: string _TRACE_FOLDER		=				"/home/fattah/development/traces/";
-	const std :: string _BURST_FOLDER		=				"/home/fattah/development/source/simulation/bursts/";
-	const std :: string _MGRUP_FOLDER		=				"/home/fattah/development/source/simulation/mgroups/";
-#endif
+const std :: string _TRACE_FOLDER		=				"../../traces/";
+const std :: string _BURST_FOLDER		=				"../../simulation/bursts/";
+const std :: string _MGRUP_FOLDER		=				"../../simulation/mgroups/";
 
 static std::map<uint32_t, std::pair<Time, uint32_t>> _GVAR_FIRST_ACK; // records the first ACK recived by each long flow!
 static std::map<uint32_t, std::pair<Time, uint32_t>> _GVAR_LAST_ACK; // records the latest ACK recived by each long flow!
-static std::map<uint32_t, std::pair<Time, uint32_t>> _GVAR_FIRST_ACK_HP; // records the first ACK recived by each long flow! High priority
-static std::map<uint32_t, std::pair<Time, uint32_t>> _GVAR_LAST_ACK_HP;  // records the latest ACK recived by each long flow! High priority
 static std::map<int64_t, uint32_t> _GVAR_ACK_TIME; // records the ACK in each miliseconds low priority
 static std::map<int64_t, uint32_t> _GVAR_HP_ACK_TIME; // records the ACK in each milliseconds; high priority
 static double _GVAR_LAST_LOAD = 0;	// records the load in each milliseconds
 
 
 // ********************************************* //
-uint32_t 		SIMULATION_TYPE				= 5; // 1: monzatcp, 2: monzadctcp, 3: pfabric, 4: tcp, 5:dctcp
-std::string		HIGHP_MODE					= "announc_0"; // normal, announc_0, skip_annc, addaptive
-std::string		REACT_MODE					= "wait_100p"; // wait_100p, ignore_annc
+uint32_t 		SIMULATION_TYPE				= 5; 		// 3: pfabric, 4: tcp, 5:dctcp
 bool			PCAP_LOG					= false;
-std::string 	BUFFER_SIZE		 			= "325KB";  // pfabric paper
-std::string 	P_BUFFER_SIZE		 		= "20KB";
+std::string 	BUFFER_SIZE		 			= "325KB";  // based on pfabric paper
+std::string 	P_BUFFER_SIZE		 		= "20KB";	// priority buffer for other use cases!
 double 			MAX_SIMULATION_TIME	 		= 1.85; 	// Should be greater than MAX_APPLICATION_TIME
 double 			MAX_APPLICATION_TIME	 	= 1.80;
-double 			LOG_START_TIME	 			= 1.1;
-double 			LOG_END_TIME	 			= 1.4;
-uint32_t 		PACKET_SIZE	 				= 1078; // In Flow-Generator we use this DataRate as fixed. Take care of it in case of modification
+double 			LOG_START_TIME	 			= 1.1;		// start logging the RPC right after this time!
+double 			LOG_END_TIME	 			= 1.4;		// end logging the RPC after this time
+uint32_t 		PACKET_SIZE	 				= 1078; 	// In Flow-Generator we use this DataRate as fixed. Take care of it in case of modification
 uint32_t 		SEGMENT_SIZE	 			= 1024;
-int				RANDOM_SEED					= 1;
-std::string 	BURST_DISTRO_LP				= "Facebook_HadoopDist_All.txt";
-std::string 	BURST_DISTRO_HP				= "Google_SearchRPC.txt";
+int				RANDOM_SEED					= 1;		
+std::string 	BURST_DISTRO_LP				= "Facebook_HadoopDist_All.txt"; // check the bursts folder
 // ********************************************* //
-uint32_t 		CON_CON			 			= 32; // concurrent connections
-double			BURST_MEAN_ARRIVAL			= 200.0;
+uint32_t 		CON_CON			 			= 32; // concurrent connections in each rack
+double			BURST_MEAN_ARRIVAL			= 100.0;
 int32_t			NETWORK_LOAD				= 20;
 bool			LOAD_IS_FIXED 				= true; // fix the load or fix the waiting time between two bursts?
 //===================== MONZA ========================//
 uint32_t 		CC_LP_PORT 					= 8801; // dctcp-red-queue accordingly -> DctcpRedQueueDisc::DoEnqueue || are not valid anymore.
-uint32_t 		CC_HP_PORT 					= 8802; // dctcp-red-queue accordingly -> DctcpRedQueueDisc::DoEnqueue || are not valid anymore.
-uint32_t 		MONZA_CTRL_PORT 			= 9900;
 //===================== FAT-TREE =====================//
 uint8_t			SPIN_CNT					= 2;
 uint8_t			LEAF_CNT					= 3;
@@ -103,12 +86,9 @@ static void my_error(std::string msg){
 }
 
 static std::string _simulation_type(){
-	if( MONZA_TCP == SIMULATION_TYPE) return "monzatcp";
-	if( MONZA_DCTCP == SIMULATION_TYPE) return "monzadctcp";
 	if( TCP == SIMULATION_TYPE) return "tcp";
 	if( DCTCP == SIMULATION_TYPE) return "dctcp";
 	if( PFABRIC == SIMULATION_TYPE) return "pfabric";
-	if( MONZA_TIMELY == SIMULATION_TYPE) return "monzatimely";
 	if( TIMELY == SIMULATION_TYPE) return "timely";
 	my_error("invalid simulatin type!");
 	throw -1;
@@ -120,21 +100,11 @@ static void my_log(std::string logType, int n_args, ...){
 						_simulation_type() + " "
 						+ "seed: " + std::to_string(RANDOM_SEED) + " " 
 						+ "concon: " + std::to_string(CON_CON) + " "  // concurrent connections
-						+ "hpMode: " + HIGHP_MODE + " " 
-						+ "loMode: " + REACT_MODE + " " 
 						+ "distroLp: " + BURST_DISTRO_LP + " " 
-						+ "distroHp: " + BURST_DISTRO_HP + " " 
 						+ "interval: " + std::to_string((int) BURST_MEAN_ARRIVAL) + " " 
 						+ "load: " 	   + std::to_string((int) NETWORK_LOAD) + " " // target load
-						// + "lth: " 	   + TIMELY_TH_LOW + " " // target load
-						// + "hth: " 	   + TIMELY_TH_HIGH + " " // target load
-						// + "prioTh: " + std::to_string(TIMELY_PRIO_BUFFER_TH) + " " 
-						// + "hpPercentage: " + std::to_string(PRIORITY_BURSTS) + " " 
-						// + "buffer: " + std::to_string(BUFFER_SIZE) + " " 
-						// + std::to_string(MAX_IGNORE_ECN) + " "
 		;
 	}
-
 	
 	std::string value = "";
 	va_list ap;
@@ -175,9 +145,7 @@ static void my_log(std::string logType, int n_args, ...){
 
 static uint64_t _GVAR_DROP_CNT = 0;
 static uint64_t _GVAR_LP_TOR_DROP_CNT = 0;
-static uint64_t _GVAR_HP_TOR_DROP_CNT = 0;
 static uint64_t _GVAR_LP_AGG_DROP_CNT = 0;
-static uint64_t _GVAR_HP_AGG_DROP_CNT = 0;
 static std::map<int64_t, uint32_t> _GVAR_DROP_TIME; // records the drops in each miliseconds
 void QueueDropTracePkt (int id, Ptr<const Packet> item){
 	_GVAR_DROP_CNT++;
@@ -199,20 +167,15 @@ void QueueDropTracePkt (int id, Ptr<const Packet> item){
 		port1 = buff[0] * 256 + buff[1];
 		port2 = buff[2] * 256 + buff[3];
 	}
-	uint max_port = std::max(CC_LP_PORT, CC_HP_PORT);
-	if((port1 == CC_LP_PORT && port2 > max_port) || (port2 == CC_LP_PORT && port1 > max_port)) {
+	if(port1 == CC_LP_PORT || port2 == CC_LP_PORT) {
 		if(id == AGG) _GVAR_LP_AGG_DROP_CNT++; else _GVAR_LP_TOR_DROP_CNT++;
-	} else if((port1 == CC_HP_PORT && port2 > max_port) || (port2 == CC_HP_PORT && port1 > max_port)) {
-		if(id == AGG) _GVAR_HP_AGG_DROP_CNT++; else _GVAR_HP_TOR_DROP_CNT++;
 	} else {
 		std::cout << "unknown packet drop!" << std::endl;
 	}
 
 	if(port1 * port2 == 0) {
-		my_error("Unknown packet dropped: " + std::to_string(port1) + ", " + std::to_string(port2));
+		my_error("Unknown Packet Dropped: " + std::to_string(port1) + ", " + std::to_string(port2));
 		return;
-	} if(port1 == MONZA_CTRL_PORT || port2 == MONZA_CTRL_PORT) {
-		std::cout << "Drop annc Packet" << std::endl;
 	}
 }
 
@@ -293,17 +256,14 @@ static void check_if_all_burst_finished() {
 	Simulator::Stop ();
 }
 
-static uint32_t _GVAR_RECENTLY_COMPLETED_BURSTS_HP = 0;
 static uint32_t _GVAR_RECENTLY_COMPLETED_BURSTS_LP = 0;
 void PrintInfo(void){
 	int64_t timeInMili = Simulator::Now ().GetMilliSeconds();
 
-	std::cout << timeInMili << "ms] Bursts: " << (FlowGenerator::_GVAR_COMPLETED_BURSTS_HP - _GVAR_RECENTLY_COMPLETED_BURSTS_HP) 
-								<< "-" << (FlowGenerator::_GVAR_COMPLETED_BURSTS_LP - _GVAR_RECENTLY_COMPLETED_BURSTS_LP);
-	_GVAR_RECENTLY_COMPLETED_BURSTS_HP = FlowGenerator::_GVAR_COMPLETED_BURSTS_HP;
+	std::cout << timeInMili << "ms] Bursts: " << (FlowGenerator::_GVAR_COMPLETED_BURSTS_LP - _GVAR_RECENTLY_COMPLETED_BURSTS_LP);
 	_GVAR_RECENTLY_COMPLETED_BURSTS_LP = FlowGenerator::_GVAR_COMPLETED_BURSTS_LP;
 
-	std::cout << "\tDROP:"<< _GVAR_DROP_CNT << " ToR:" << _GVAR_HP_TOR_DROP_CNT << "-" << _GVAR_LP_TOR_DROP_CNT << ", Agg:" << _GVAR_HP_AGG_DROP_CNT << "-" << _GVAR_LP_AGG_DROP_CNT;
+	std::cout << "\tDROP:"<< _GVAR_DROP_CNT << " ToR:" << _GVAR_LP_TOR_DROP_CNT << ", Agg:" << _GVAR_LP_AGG_DROP_CNT;
 	std::cout << "\tMaxQ:" << _GVAR_QUEUE_LEN_MAX << ", Intv:" << (uint32_t)BURST_MEAN_ARRIVAL;
 
 	std::cout << "\tEnq ";
@@ -406,9 +366,8 @@ void printCustomPlots(){
 
 void ExtractFlowStats() {
 	std::cout << std::endl << std::endl 
-			<< "=========================== FAT-TREE " <<
+			<< "=========================== SPINE-LEAF " <<
 			"(concurrent: " << CON_CON << ", " << _simulation_type() <<
-			", Anoc Mode: " << HIGHP_MODE << ", ReactMode: " << REACT_MODE <<
 			", load: " << NETWORK_LOAD <<
 			")============================" << std::endl;
 
@@ -442,33 +401,6 @@ void ExtractFlowStats() {
 	my_log("EnqVolume", 1, "uint64 volume:", _GVAR_ENQ_CNT);
 	my_log("DropValue", 	1, "uint64 drop:", _GVAR_DROP_CNT);
 	my_log("DropRate", 	1, "double drop:", _GVAR_DROP_CNT * 1.0 / _GVAR_ENQ_CNT);
-
-	
-
-#if 0
-	if(_GVAR_DROP_CNT > 0){
-		struct MyPlot* buffDropPlot = getDropPlotter("Drop");
-		ALL_DATASETS.push_back(buffDropPlot);
-		for(std::map<int64_t, uint32_t>::const_iterator it = _GVAR_DROP_TIME.begin(); it != _GVAR_DROP_TIME.end(); ++it){
-			buffDropPlot->dataset.Add (it->first, it->second);
-		}
-	}
-	struct MyPlot* lpGoodput = getDropPlotter("Goodput Normal");
-	ALL_DATASETS.push_back(lpGoodput);
-	for(std::map<int64_t, uint32_t>::const_iterator it = _GVAR_ACK_TIME.begin(); it != _GVAR_ACK_TIME.end(); ++it) lpGoodput->dataset.Add (it->first, it->second);
-
-	struct MyPlot* hpGoodput = getDropPlotter("Goodput HP");
-	ALL_DATASETS.push_back(hpGoodput);
-	for(std::map<int64_t, uint32_t>::const_iterator it = _GVAR_HP_ACK_TIME.begin(); it != _GVAR_HP_ACK_TIME.end(); ++it) hpGoodput->dataset.Add (it->first, it->second);
-
-	if(_dctcp() || _monzadctcp()){
-		struct MyPlot* markPlot = getMarkPlotter("Mark");
-		ALL_DATASETS.push_back(markPlot);
-		for(std::map<int64_t, uint32_t>::const_iterator it = _GVAR_MARK_TIME.begin(); it != _GVAR_MARK_TIME.end(); ++it){
-			markPlot->dataset.Add (it->first, it->second);
-		}
-	}
-#endif
 }
 
 #endif

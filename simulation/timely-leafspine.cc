@@ -13,10 +13,8 @@
 #include "ns3/traffic-control-module.h"
 #include "ns3/gnuplot.h"
 #include "ns3/timely-sender.h"
-#include "ns3/timely-control.h"
 #include "ns3/timely-receiver.h"
 #include "ns3/timely-sender-receiver-helper.h"
-#include "ns3/timely-packet-filter.h"
 #include "ns3/sequence-number.h"
 
 #include "flow-generator.h"
@@ -32,12 +30,11 @@ using namespace ns3;
 NS_LOG_COMPONENT_DEFINE ("MONZA_TIMELY");
 
 struct MyPlot;
-class TimelyPacketFilter;
 void SetupToplogyAndRun();
 void printCustomPlots();
 void setBufferSizeListner(NetDeviceContainer&, int, int, int);
 void setBufferSizeListner(NetDeviceContainer&, int, int);
-void SetupFlows(NodeContainer &nodes, TimelyCntrlHelper &cntrlHelper, const uint8_t srcRackId, uint conn);
+void SetupFlows(NodeContainer &nodes, const uint8_t srcRackId, uint conn);
 void ExtractFlowStats();
 void SetDefaultConfigs();
 MyPlot* getDropPlotter(std::string title);
@@ -48,7 +45,6 @@ void PrintInfo(void);
 
 uint32_t FlowGenerator::_GVAR_ORACLE_BUFFER_OCCUPANCY;
 uint32_t FlowGenerator::_GVAR_ONGOING_BURSTS;
-uint32_t FlowGenerator::_GVAR_COMPLETED_BURSTS_HP;
 uint32_t FlowGenerator::_GVAR_COMPLETED_BURSTS_LP;
 uint8_t *FlowGenerator::RANDOM_BUFFER;
 double FlowGenerator::_GVAR_LOG_START;
@@ -65,38 +61,19 @@ std::string		TIMELY_TH_LOW  				= "70us";
 std::string		TIMELY_TH_HIGH  			= "200us";
 // =========================================================//
 
-static bool _monzatimely(){
-	return (MONZA_TIMELY == SIMULATION_TYPE);
-}
-
 static void TimelyAckRcvd (uint32_t flowId, bool isHigh, uint32_t oldAck, uint32_t newAck){
-	if(isHigh){
-		if(_GVAR_FIRST_ACK_HP.find(flowId) == _GVAR_FIRST_ACK_HP.end()){
-			_GVAR_FIRST_ACK_HP[flowId] = std::make_pair(Simulator::Now(), oldAck);
-		}
-		_GVAR_LAST_ACK_HP[flowId] = std::make_pair(Simulator::Now(), newAck);
-	}else{
-		if(_GVAR_FIRST_ACK.find(flowId) == _GVAR_FIRST_ACK.end()){
-			_GVAR_FIRST_ACK[flowId] = std::make_pair(Simulator::Now(), oldAck);
-		}
-		_GVAR_LAST_ACK[flowId] = std::make_pair(Simulator::Now(), newAck);
+	if(_GVAR_FIRST_ACK.find(flowId) == _GVAR_FIRST_ACK.end()){
+		_GVAR_FIRST_ACK[flowId] = std::make_pair(Simulator::Now(), oldAck);
 	}
-
+	_GVAR_LAST_ACK[flowId] = std::make_pair(Simulator::Now(), newAck);
 
 	int64_t timeInMili = Simulator::Now ().GetMilliSeconds();
-	if(isHigh){
-		if(_GVAR_HP_ACK_TIME.find(timeInMili) == _GVAR_HP_ACK_TIME.end()) {
-			_GVAR_HP_ACK_TIME[timeInMili] = (newAck - oldAck);
-		} else {
-			_GVAR_HP_ACK_TIME[timeInMili] = _GVAR_HP_ACK_TIME[timeInMili] + (newAck - oldAck);
-		}
-	}else{
-		if(_GVAR_ACK_TIME.find(timeInMili) == _GVAR_ACK_TIME.end()) {
-			_GVAR_ACK_TIME[timeInMili] = (newAck - oldAck);
-			PrintInfo();
-		} else {
-			_GVAR_ACK_TIME[timeInMili] = _GVAR_ACK_TIME[timeInMili] + (newAck - oldAck);
-		}
+
+	if(_GVAR_ACK_TIME.find(timeInMili) == _GVAR_ACK_TIME.end()) {
+		_GVAR_ACK_TIME[timeInMili] = (newAck - oldAck);
+		PrintInfo();
+	} else {
+		_GVAR_ACK_TIME[timeInMili] = _GVAR_ACK_TIME[timeInMili] + (newAck - oldAck);
 	}
 }
 
@@ -109,7 +86,6 @@ void SetDefaultConfigs(){
 	ns3::PacketMetadata::Enable (); // avoid error in the packet filter.
 	_GVAR_DROP_CNT = 0;
 	FlowGenerator::_GVAR_ONGOING_BURSTS = 0;
-	FlowGenerator::_GVAR_COMPLETED_BURSTS_HP = 0;
 	FlowGenerator::_GVAR_COMPLETED_BURSTS_LP = 0;
 	FlowGenerator::_GVAR_LOG_START = LOG_START_TIME;
 	FlowGenerator::_GVAR_LOG_END = LOG_END_TIME;
@@ -129,10 +105,7 @@ int main (int argc, char *argv[]){
 	cmd.AddValue ("seed", "The random seed for the starting time of short TCP connections", RANDOM_SEED); // concurrent connections
 	cmd.AddValue ("TimelyThLow", "Timely's low RTT threshold", TIMELY_TH_LOW);
 	cmd.AddValue ("TimelyThHigh", "Timely's hight RTT threshold", TIMELY_TH_HIGH);
-	cmd.AddValue ("HMode", "How to handle high priority bursts", HIGHP_MODE);
-	cmd.AddValue ("LMode", "How to react to announcements", REACT_MODE);
-	cmd.AddValue ("LpDistro", "Burst Distribution Files, low priority", BURST_DISTRO_LP);
-	cmd.AddValue ("HpDistro", "Burst Distribution Files, high priority", BURST_DISTRO_HP);
+	cmd.AddValue ("distro", "Burst Distribution Files, low priority", BURST_DISTRO_LP);
 	cmd.AddValue ("interval", "1/X seconds is the mean interval time", BURST_MEAN_ARRIVAL);
 	cmd.AddValue ("load", "Load in the network, e.g. 60 --> 60% link utilization. -1 for unbound load", NETWORK_LOAD);
 
@@ -146,9 +119,8 @@ int main (int argc, char *argv[]){
 	if(NETWORK_LOAD < 0) 
 		LOAD_IS_FIXED = false;
 
-	_GVAR_NODE_IN_RACK_CNT = NODE_IN_RACK_CNT;
 
-	if(SIMULATION_TYPE != TIMELY && SIMULATION_TYPE != MONZA_TIMELY) {
+	if(SIMULATION_TYPE != TIMELY) {
 		std::cout << "Invalid Simulation TYPE: " << SIMULATION_TYPE << std::endl;
 		return EXIT_FAILURE;
 	}
@@ -245,9 +217,6 @@ void SetupToplogyAndRun(){
 				QueueDiscContainer qDisk1 = tchNodes.Install (node2sw[i][j].Get(0));
 				QueueDiscContainer qDisk2 = tchNodes.Install (node2sw[i][j].Get(1));
 				
-				Ptr<TimelyPacketFilter> pf2 = CreateObject<TimelyPacketFilter> ();
-				qDisk2.Get(0) ->AddPacketFilter(pf2);
-
 				qDisk2.Get(0) ->TraceConnectWithoutContext ("PacketsInQueue", MakeBoundCallback (&QueueLenTrace, traceId));
 				qDisk2.Get(0) ->TraceConnectWithoutContext ("Drop", 				MakeBoundCallback (&QueueDropTrace, H2TOR));
 			}
@@ -258,11 +227,6 @@ void SetupToplogyAndRun(){
 
 				QueueDiscContainer qDisk1 = tchNodes.Install (sw2sw[i][j].Get(0));
 				QueueDiscContainer qDisk2 = tchNodes.Install (sw2sw[i][j].Get(1));
-				
-				Ptr<TimelyPacketFilter> pf1 = CreateObject<TimelyPacketFilter> ();
-				Ptr<TimelyPacketFilter> pf2 = CreateObject<TimelyPacketFilter> ();
-				qDisk1.Get(0) ->AddPacketFilter(pf1);
-				qDisk2.Get(0) ->AddPacketFilter(pf2);
 				
 				qDisk1.Get(0) ->TraceConnectWithoutContext ("PacketsInQueue", MakeBoundCallback (&QueueLenTrace, traceId));
 				qDisk2.Get(0) ->TraceConnectWithoutContext ("PacketsInQueue", MakeBoundCallback (&QueueLenTrace, traceId));
@@ -329,28 +293,17 @@ void SetupToplogyAndRun(){
 	{ // installing Timely Receivers and Cntrlers
 		ApplicationContainer sinkApps;
 		ApplicationContainer cntrlApps;
+		TimelyReceiverHelper lpSinkHelper(CC_LP_PORT);
 
-		TimelyReceiverHelper 	hpSinkHelper	(CC_HP_PORT);
-		TimelyReceiverHelper 	lpSinkHelper	(CC_LP_PORT);
-		TimelyCntrlHelper		cntrlHelper		(TIMELY_CTRL_PORT, LEAF_CNT, NODE_IN_RACK_CNT);
-
-		cntrlHelper.SetAttribute("Highp_Mode",			StringValue(HIGHP_MODE));
-		
 		for(uint8_t i = 0; i < LEAF_CNT; i++)
 			for(uint8_t j = 0; j < NODE_IN_RACK_CNT; j++){
-				sinkApps.Add (hpSinkHelper.Install (nodes[i].Get (j)));
 				sinkApps.Add (lpSinkHelper.Install (nodes[i].Get (j)));
-
-				cntrlApps.Add (cntrlHelper.Install (nodes[i].Get (j), i, j));
 			}
 		sinkApps.Start (Seconds (0.0));
 		cntrlApps.Start (Seconds (0.0));
 
 		sinkApps.Stop (Seconds (MAX_SIMULATION_TIME));
 		cntrlApps.Stop (Seconds (MAX_SIMULATION_TIME));
-
-		for(uint8_t i = 0; i < LEAF_CNT; i++)
-			SetupFlows(nodes[i], cntrlHelper, i, CON_CON);
 	}
 
 	if(PCAP_LOG){
@@ -361,7 +314,7 @@ void SetupToplogyAndRun(){
 	ExtractFlowStats();
 }
 
-void SetupFlows(NodeContainer &nodes, TimelyCntrlHelper& cntrlHelper,  const uint8_t srcRackId, uint nConnections){
+void SetupFlows(NodeContainer &nodes, const uint8_t srcRackId, uint nConnections){
 	if(nConnections == 0 && srcRackId > 0) return; // debug purposes! only one connection in the whole network.
 	else if(nConnections == 0) nConnections = 1;
 	_printLog("Setup Unicast Connections ["+std::to_string(srcRackId)+"]....");
@@ -404,33 +357,15 @@ void SetupFlows(NodeContainer &nodes, TimelyCntrlHelper& cntrlHelper,  const uin
 		Ptr<TimelySender> 		lpApp 	= DynamicCast<TimelySender> (senderHelper.Install(nodes.Get(nodeId))); // Low  priority Timely sender
 		Ptr<TimelySender> 		hpApp 	= DynamicCast<TimelySender> (senderHelper.Install(nodes.Get(nodeId))); // high priority Timely sender
 
-		if(_monzatimely())
-			cntrlHelper.Install(lpApp, hpApp, srcRackId, nodeId); // announcment controler
-
 		lpApp->SetAttribute("RemotePort", 			UintegerValue(CC_LP_PORT));
 		lpApp->SetAttribute("HighPriorityLink", 	StringValue("false"));
-		lpApp->SetAttribute("ReactMode",			StringValue(REACT_MODE));
 
-		if(_monzatimely()) {
-			hpApp->SetAttribute("RemotePort", 			UintegerValue(CC_HP_PORT));
-			hpApp->SetAttribute("HighPriorityLink",		StringValue("true"));
-		}
-
-
-		Ptr<FlowGenerator> fgLp = CreateObject<FlowGenerator> (lpApp, appId, _BURST_FOLDER + BURST_DISTRO_LP, false);
-		Ptr<FlowGenerator> fgHp = CreateObject<FlowGenerator> (hpApp, appId, _BURST_FOLDER + BURST_DISTRO_HP, true);
+		Ptr<FlowGenerator> fgLp = CreateObject<FlowGenerator> (lpApp, appId, _BURST_FOLDER + BURST_DISTRO_LP, NODE_2_SW_BW);
 		
 		lpApp->SetAttribute("MaxMessageSize", 		UintegerValue(fgLp->GetMaxMsgSize()));
-		hpApp->SetAttribute("MaxMessageSize", 		UintegerValue(fgHp->GetMaxMsgSize()));
 		hpApp->SetRandomBuffer(FlowGenerator::RANDOM_BUFFER);
 		lpApp->SetRandomBuffer(FlowGenerator::RANDOM_BUFFER);
 		
-		if(_monzatimely()) {
-			fgHp ->SetMeanBurstIntervalTime(BURST_MEAN_ARRIVAL);
-			fgHp ->SetLogger(my_log, my_error);
-			ALL_FLOW_GENERATORS.push_back(fgHp);
-		}
-
 		fgLp ->SetMeanBurstIntervalTime(BURST_MEAN_ARRIVAL);
 		fgLp ->SetLogger(my_log, my_error);
 		ALL_FLOW_GENERATORS.push_back(fgLp);
@@ -443,18 +378,5 @@ void SetupFlows(NodeContainer &nodes, TimelyCntrlHelper& cntrlHelper,  const uin
 		lpApp	->SetStartTime (Seconds (1.0));
 		lpApp	->SetStopTime (Seconds (MAX_APPLICATION_TIME));
 		fgLp	->SetStopTime (Seconds (MAX_APPLICATION_TIME));
-
-		if(_monzatimely()) {
-			nodes.Get(nodeId)->AddApplication(fgHp);
-			hpApp->TraceConnectWithoutContext ("AckRecvd", 	MakeBoundCallback (&fgHp ->TimelyAckRcvd, fgHp));
-			hpApp->TraceConnectWithoutContext ("AckRecvd", 	MakeBoundCallback (&TimelyAckRcvd, appId, true));
-
-
-			fgHp	->SetStartTime (Seconds (1.0));
-			hpApp	->SetStartTime (Seconds (1.0));
-
-			fgHp	->SetStopTime (Seconds (MAX_APPLICATION_TIME));
-			hpApp	->SetStopTime (Seconds (MAX_APPLICATION_TIME));
-		}
 	}
 }

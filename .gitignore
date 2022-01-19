@@ -37,3 +37,6 @@
 
 # vscode
 .vscode
+
+# ns3 build
+ns-allinone-3.35/ns-3.35/build

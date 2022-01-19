@@ -8,7 +8,6 @@
 #include "ns3/ipv4-address.h"
 #include "ns3/timely-receiver.h"
 #include "ns3/timely-sender.h"
-#include "ns3/timely-control.h"
 #include <map>
 
 namespace ns3 {
@@ -37,23 +36,6 @@ public:
 
 private:
 	ObjectFactory m_factory;
-};
-
-class TimelyCntrlHelper {
-public:
-	TimelyCntrlHelper ();
-	TimelyCntrlHelper (uint16_t ctrlPort, uint16_t leaf_cnt, uint16_t node_in_rack_cnt);
-	void SetAttribute (std::string name, const AttributeValue &value);
-	Ptr<Application> Install (Ptr<Node> c,	uint16_t leafId, uint16_t nodeId);
-	void Install (Ptr<TimelySender> lp, Ptr<TimelySender> hp, uint16_t leafId, uint16_t nodeId);
-
-private:
-	std::map<uint32_t, Ptr<TimelyControl>> m_allTimelyControlApps;
-	ObjectFactory m_factory;
-	uint32_t GetIndex (uint16_t leafId, uint16_t nodeId);
-
-	uint16_t LEAF_CNT;
-	uint16_t NODE_CNT;
 };
 
 } // namespace ns3

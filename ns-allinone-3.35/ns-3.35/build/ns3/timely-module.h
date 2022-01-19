@@ -7,9 +7,7 @@
     
 
 // Module headers:
-#include "timely-control.h"
 #include "timely-header.h"
-#include "timely-packet-filter.h"
 #include "timely-receiver.h"
 #include "timely-sender-receiver-helper.h"
 #include "timely-sender.h"

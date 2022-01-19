@@ -17,7 +17,6 @@
 #include "ns3/ipv4-end-point.h"
 #include "timely-sender.h"
 #include "timely-header.h"
-#include "timely-packet-filter.h"
 #include <stdlib.h>
 #include <stdio.h>
 
@@ -311,7 +310,7 @@ namespace ns3
 		m_maxRate = DataRate(m_maxRateMultiple * m_C.GetBitRate());
 		m_minRate = DataRate(m_minRateMultiple * m_C.GetBitRate());
 		m_HAI = 1;
-		m_pg = TimelyPacketFilter::LOW_PRIORITY;
+		m_pg = 0;
 	}
 
 	uint32_t TimelySender::BytesInBuffer() const{
@@ -444,18 +443,6 @@ namespace ns3
 		uint32_t totalSent = 0;
 		for (unsigned i = 0; totalSent <= m_burstSize && BytesInBuffer() > 0; i++){
 			totalSent += SendPacket();
-
-			// double expected_window = (m_rate.Get().GetBitRate() / 8) * m_t_low.GetSeconds();
-			// if(expected_window > m_pktSize && BytesInFly() > expected_window)
-			// 	break;
-
-
-			// static uint max_bytes_in_air = 0;
-			// if(BytesInFly() > max_bytes_in_air) {
-			// 	max_bytes_in_air = BytesInFly();
-			// 	double expected = (m_rate.Get().GetBitRate() / 8) * m_prev_rtt.GetSeconds();
-			// 	std::cout << "In Air: " << BytesInFly() << " --> " << (int) (BytesInFly() * 100 / expected) << "%"  << std::endl;
-			// }
 		}
 	}
 
@@ -468,7 +455,7 @@ namespace ns3
 
 		TimelyHeader tHeader;
 		tHeader.SetSeq(m_sent);
-		tHeader.SetPG(TimelyPacketFilter::LOW_PRIORITY);
+		tHeader.SetPG(0);
 		tHeader.SetData();
 		tHeader.SetTs (Simulator::Now ().GetTimeStep ());
 
