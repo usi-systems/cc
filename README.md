@@ -1,58 +1,66 @@
-# Congestion-control in NS3 v30.1
-This is an NS-3 simulator for data center congestion control tests. It includes the implementation of Timely, plus all of its the variation for announcements handling. 
+# Data Center Congestion Control Simulation in NS3
 
-It is based on [NS-3 version 3.31](https://www.nsnam.org/releases/ns-allinone-3.31.tar.bz2)
+This repo includes the ns3 simulation environment for testing various
+congestion control in a typical 2-tier
+[leaf-spine](https://www.arubanetworks.com/faq/what-is-spine-leaf-architecture/)
+topologies. Currently, it contains the configuration for
+[TIMELY](https://dl.acm.org/doi/abs/10.1145/2829988.2787510),
+[pFabric](https://dl.acm.org/doi/abs/10.1145/2534169.2486031),
+[DCTCP](https://dl.acm.org/doi/abs/10.1145/1851182.1851192) and TCP Reno.
+The code is intentionally developed in modules so that it can be extended with
+further congestion control schemes in the future. It has been tested with
+NS-3.33 and NS-3.35, but it should work with other versions as well. 
 
-# Installation
+# Directories
+- **ns-allinone-3.35** It contains the latest tested version of ns3
+ simulator. The simulation code is developed in modules, therefore it
+ should also work with other versions as well. I put this directory here
+ for the sake of simplicity in installation. 
+- **pfabric** It contains the implementation for a pFabric switching device
+- **timely** It contains the implementation of Timely congestion control
+ over UDP. For simplicity, it has two sender and receiver components. This
+ directory also contains the Timely headers. 
+- **simulation** This is the main directory to start the simulations. The
+ contains the code necessary to build the data center topology, together
+ with the
+ [flow-generator](https://github.com/usi-systems/cc/blob/master/simulation/flow-generator.h)
+ and the distribution for [RPC's
+ lengths](https://github.com/usi-systems/cc/tree/master/simulation/bursts). 
+- **traces** Finally, this directory keeps track of the simulation results. 
 
-* Install [gnuplot](http://gnuplot.sourceforge.net) (to create simulation results). On OSX, you can install with homebrew:
+# How to Run
+## N3 Installation
+Here I show the commands required to install the ns3 within this repo. If
+you are willing to use an external code base, the steps should be similar. 
+```bash
+git clone git@github.com:usi-systems/cc.git
+cd cc/ns-allinone-3.35/ns-3.35/
+./waf configure #<-d optimized> for faster execuation
+./waf build # it takes a while
+./waf --run "scratch/tcp-leafspine.cc --sType=X" # X=3:pFabric, 4:TCP, 5:DCTCP 
+./waf --run "scratch/timely-leafspine.cc " # Timely
 ```
-$ brew install gnuplot
-```
+## Simulation Configs
+You can fully configure your simulation using command line arugments or
+some other global variables in the code. Below you may find a few of them.
+For more, please check the code. 
 
-Follow the installation steps below to install in debug mode:
-```
-$ cd /YOURCHOICE_1/
-$ wget https://www.nsnam.org/releases/ns-allinone-3.31.tar.bz2
-$ tar -xjf https://www.nsnam.org/releases/ns-allinone-3.31.tar.bz2
-$ cd ns-allinone-3.31/
-$ cd ns-3-allinone/ns-3.31/
-$ ./waf configure  # -d release, optimized
-$ ./waf build
-```
+| option | Type | Description | Plausible Values | 
+| ------------- |:---| ----------| ---------|
+| --distro | Command-Line | The distribution file to generate RPCs from | "Facebook_HadoopDist_All.txt"
+| --interval | Command-Line | The mean value for the pausing time between two sequential RPCs. The pausing time follows an exponential distribution | "Facebook_HadoopDist_All.txt"
+| --TimelyThLow | Command-Line | Timely lower threshold | "70us"
+| --TimelyThHigh | Command-Line | Timely higher threshold | "170us"
 
-Clone this repo and install it on top of the NS3 source files:
-```
-$ cd /YOURCHOICE_2/
-$ git clone git@github.com:usi-systems/buffer-sim.git
-$ git fetch
-$ git checkout rts
-$ cd /YOURCHOICE_1/ns-3-allinone-3.31/ns-3.31/
-$ ln -s /YOURCHOICE_2/buffer-sim/dctcp ./src/
-$ ln -s /YOURCHOICE_2/buffer-sim/timely ./src/
-$ ./waf build
-``` 
+# Refernces
+- **Timely** implementation is based on this [repo](https://github.com/bobzhuyb/ns3-rdma)
+- **Burst Distributions** are obtained from the [Homa](https://dl.acm.org/doi/abs/10.1145/3230543.3230564) project 
+- **pFabric** the implementation is done based on the paper. 
 
-To run the simulation
-```
-$ cd /YOURCHOICE_1/ns-allinone-3.31/ns-3.31/
-$ ln -s /YOURCHOICE_1/buffer-sim/simulation/fat-tree.cc ./scratch/
-$ ln -s /YOURCHOICE_1/buffer-sim/simulation/myapp.h ./scratch/
-$ ln -s /YOURCHOICE_1/buffer-sim/simulation/flowlet.h ./scratch/
-$ ./waf --run "scratch/fat-tree <Other Options>
-```
-Here are the possible options:
-| option        | Description           | Possible Values | 
-| ------------- |:-------------| ---------|
-| bufferSize | Main buffer size in packet |  1, 2, ...
-| priorityPercentage | Percentage of priorty bursts  | 0,1,...,100 
-| maxSimulationTime | The end of the simulation time in seconds | 
-| packetSize | Packet size in Bytes | 57, 58, ...
-| longTcpCnt | Number of concurrent TIMELY connections |
-| seed | The random seed for the starting time of short TCP connections |
-| TimelyDelta | Timely's delta for increasing the rate  | e.g. 5Gbps
-| TimelyInitial | Timely's initial sending rate  | e.g. 5Gpbs
-| TimelyThLow | Timely's low RTT threshold | e.g. 100us
-| TimelyThHigh | Timely's hight RTT threshold | e.g. 200us
-| TimelyHighpMode | How to handle high priority bursts | `normal`: Vanilla Timely, `announc_0`: Start sending immediately after sending announcements, `announc_22`: Wait for 22us after sending the announcements, `skip_annc`: Don't send announcements
-| TimelyLowpMode | How to react to announcements | `wait_100p`: calculate the waiting time, wait 100%, `wait_90p`: calculate the waiting time, wait 90%, ..., `skipif_200`: ignore an announcement if there exists only 200 packets left to send, `skip_100`: ignore an announcement if there exists only 100 packets left to send, `ignore_annc`: ignore all announcements
+# Known Issues
+- There is no PFC implementation.
+
+# Questions
+For technical questions, please create an issue in this repo, so other people can benefit from your questions.
+
+For other questions, please contact Ali (fattaa@usi.ch).
