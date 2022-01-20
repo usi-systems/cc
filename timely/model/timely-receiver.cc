@@ -174,6 +174,10 @@ void TimelyReceiver::HandleRead(Ptr<Socket> socket){
 				// std::cout << "\tneeded\t" << Simulator::Now().GetMicroSeconds() - 1000000 << "us \tseq:" <<  seqNum << " ack:" << m_received[from] <<	std::endl;
 			}
 
+			// if(GetIpv4Address() == "10.2.2.1") {
+			// 	std::cout << "ACK] seq:" << tHeader.GetSeq() << ", from: " << from << ", ip: " << GetIpv4Address() << std::endl;
+			// }
+
 			SendAck(socket, from, tHeader);
 			m_sent[from] = m_sent[from] + 1;
 		}

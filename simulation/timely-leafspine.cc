@@ -304,6 +304,9 @@ void SetupToplogyAndRun(){
 
 		sinkApps.Stop (Seconds (MAX_SIMULATION_TIME));
 		cntrlApps.Stop (Seconds (MAX_SIMULATION_TIME));
+		
+		for(uint8_t i = 0; i < LEAF_CNT; i++)
+			SetupFlows(nodes[i], i, CON_CON);
 	}
 
 	if(PCAP_LOG){
@@ -358,8 +361,6 @@ void SetupFlows(NodeContainer &nodes, const uint8_t srcRackId, uint nConnections
 		Ptr<TimelySender> 		hpApp 	= DynamicCast<TimelySender> (senderHelper.Install(nodes.Get(nodeId))); // high priority Timely sender
 
 		lpApp->SetAttribute("RemotePort", 			UintegerValue(CC_LP_PORT));
-		lpApp->SetAttribute("HighPriorityLink", 	StringValue("false"));
-
 		Ptr<FlowGenerator> fgLp = CreateObject<FlowGenerator> (lpApp, appId, _BURST_FOLDER + BURST_DISTRO_LP, NODE_2_SW_BW);
 		
 		lpApp->SetAttribute("MaxMessageSize", 		UintegerValue(fgLp->GetMaxMsgSize()));

@@ -53,6 +53,7 @@ namespace ns3 {
 		void SetPG(uint16_t pg);
 		void BufferAddBytes(uint32_t nPacket);
 		std::string GetIpv4Address() const;
+		std::string GetRemotePeerAddress() const;
 		int UnderLowTh(void) const;
 		void SetRandomBuffer(uint8_t *buff);
 
@@ -66,11 +67,14 @@ namespace ns3 {
 			return  
 				"[" +
 				std::to_string(Simulator::Now().GetMicroSeconds() - 1000000) + "us" +
-				", ip: " 		+ GetIpv4Address() +
+				", srcip: " 		+ GetIpv4Address() +
+				", dstip: " 		+ GetRemotePeerAddress() +
 				", id: " 		+ std::to_string(m_appId) +
 				", m_recvd: " 	+ std::to_string(m_received) +
 				", m_sent: "  	+ std::to_string(m_sent) +
-				", total: " 	+ std::to_string(m_totalToBeSent) + "]";
+				// ", total: " 	+ std::to_string(m_totalToBeSent) + 
+				"]"
+				;
 		}
 
 	protected:
@@ -148,11 +152,6 @@ namespace ns3 {
 		DataRate 	m_minRate;
 
 		uint8_t 	*m_randomBuffer; // Packet payload to send!
-
-
-		bool m_highPriority;
-		int m_reactMode;					// How to react to burst! Only if low priority app.
-
 	};
 
 } // namespace ns3

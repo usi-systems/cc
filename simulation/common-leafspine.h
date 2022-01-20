@@ -32,7 +32,7 @@ std::string 	BUFFER_SIZE		 			= "325KB";  // based on pfabric paper
 std::string 	P_BUFFER_SIZE		 		= "20KB";	// priority buffer for other use cases!
 double 			MAX_SIMULATION_TIME	 		= 1.85; 	// Should be greater than MAX_APPLICATION_TIME
 double 			MAX_APPLICATION_TIME	 	= 1.80;
-double 			LOG_START_TIME	 			= 1.1;		// start logging the RPC right after this time!
+double 			LOG_START_TIME	 			= 1.05;		// start logging the RPC right after this time!
 double 			LOG_END_TIME	 			= 1.4;		// end logging the RPC after this time
 uint32_t 		PACKET_SIZE	 				= 1078; 	// In Flow-Generator we use this DataRate as fixed. Take care of it in case of modification
 uint32_t 		SEGMENT_SIZE	 			= 1024;
@@ -42,7 +42,7 @@ std::string 	BURST_DISTRO_LP				= "Facebook_HadoopDist_All.txt"; // check the bu
 uint32_t 		CON_CON			 			= 32; // concurrent connections in each rack
 double			BURST_MEAN_ARRIVAL			= 100.0;
 int32_t			NETWORK_LOAD				= 20;
-bool			LOAD_IS_FIXED 				= true; // fix the load or fix the waiting time between two bursts?
+bool			LOAD_IS_FIXED 				= false; // fix the load or fix the waiting time between two bursts?
 //===================== MONZA ========================//
 uint32_t 		CC_LP_PORT 					= 8801; // dctcp-red-queue accordingly -> DctcpRedQueueDisc::DoEnqueue || are not valid anymore.
 //===================== FAT-TREE =====================//

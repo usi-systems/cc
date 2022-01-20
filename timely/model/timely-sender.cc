@@ -24,12 +24,7 @@
 // #include "ns3/network-module.h"
 // #include "ns3/ipv4.h"
 
-#define DEBUG_CONDITION false // m_appId == 186 && Simulator::Now().GetMilliSeconds() > 1260
-
-enum LOWP_MODE_TYPE {
-	WAIT_100 = 	100100,
-	IGNORE_ANNC = 600,
-};
+#define DEBUG_CONDITION false // m_appId == 345 // && Simulator::Now().GetMilliSeconds() > 1260
 
 namespace ns3 
 {
@@ -167,86 +162,9 @@ namespace ns3
                 						"Adjusted RTT",
                      					MakeTraceSourceAccessor (&TimelySender::m_new_rtt),
                      					"ns3::TracedValueCallback::Time")
-			.AddAttribute("ReactMode",
-										"How to react to announcements",
-										StringValue("wait_100p"),
-										MakeStringAccessor(&TimelySender::SetReactMode),
-										MakeStringChecker ())
-			.AddAttribute("HighPriorityLink", 
-										"This is a high priority connection. It announces every burst!",
-										BooleanValue (false),
-										MakeBooleanAccessor (&TimelySender::m_highPriority),
-										MakeBooleanChecker ())
-
 			;
 			
 		return tid;
-	}
-
-	Time TimelySender::CalculateWaitingTime(uint32_t nBytes){
-		if(m_reactMode == IGNORE_ANNC) {
-			std::cout << "Invalid State!"; exit(55);
-		}
-
-		if(nBytes == 0) nBytes++;
-		Time delay = GetBurstDuration(nBytes, m_rate);
-		delay = std::max(delay, m_sleep);
-
-		return delay;
-	}
-
-	void TimelySender::SetReactMode(std::string mode){
-		if(mode == "wait_100p"){
-			m_reactMode = WAIT_100;
-			return;
-		}
-		if(mode == "ignore_annc"){
-			m_reactMode = IGNORE_ANNC;
-			return;
-		}
-		std::cout << "invlid react mode: TimelySender" << std::endl;
-		exit(10);
-	}
-
-	void TimelySender::ReceiveCtrl(uint32_t nBytes){
-		if(DEBUG_CONDITION){
-			std::cout << "\tannc rcvd:     " << nBytes << " " << Print() << std::endl;
-		}
-
-		if(m_highPriority) throw -1; // it should be normal traffic
-		if(BytesInBuffer() == 0) return;
-		if(m_reactMode == IGNORE_ANNC) return;
-
-		Time delay = CalculateWaitingTime(nBytes);
-		// if(delay < m_min_rtt / 2) return;
-		// delay -= m_min_rtt / 2;
-		Time previousWaitingTime = Time(m_sendEvent.GetTs() - Simulator::Now ().GetTimeStep());
-
-		if(delay < previousWaitingTime) return;
-		Time maxDelay = Time("200us");
-		if(delay > maxDelay) delay = maxDelay;
-
-		if(m_sendEvent.IsRunning()){
-			Simulator::Cancel(m_sendEvent);
-			m_sendEvent = Simulator::Schedule(delay, &TimelySender::Send, this);
-		}
-	}
-
-	void TimelySender::MaximumSendingRate () {
-		if(!m_highPriority) throw -1;
-		
-		if(m_rate.Get().GetBitRate() < m_maxRate.GetBitRate() * 0.5) {
-			m_rate 	= DataRate(m_maxRate.GetBitRate() * 0.5);
-			// std::cout << "Increase the rate!" << std::endl;
-		} else
-			// std::cout << "High Priority Already is High Enough!" << std::endl;
-
-		m_sleep = GetBurstDuration(m_rate);
-
-		if(m_sendEvent.IsRunning()){
-			Simulator::Cancel(m_sendEvent);
-			m_sendEvent = Simulator::Schedule(m_sleep, &TimelySender::Send, this);
-		}
 	}
 
 	void TimelySender::SetRandomBuffer(uint8_t *buff) {
@@ -267,6 +185,18 @@ namespace ns3
 		return myIp;
 	}
 
+	std::string TimelySender::GetRemotePeerAddress() const {
+		if(m_socket == NULL)
+			return "NULL";
+		
+		Ipv4Address ipAddr = Ipv4Address::ConvertFrom(m_peerAddress);
+
+		std::stringstream ss; 
+		ss << ipAddr; 
+		std::string myIp = ss.str();
+		return myIp;
+	}
+
 	void TimelySender::BufferAddBytes(uint32_t nBytes){
 		if(DEBUG_CONDITION){
 			std::cout << "add      nBytes:" << nBytes << " " << Print() << std::endl;
@@ -275,12 +205,6 @@ namespace ns3
 		if(nBytes > 0){
 			if(m_received != m_sent) throw 1249;
   			m_totalToBeSent += nBytes;
-		}
-
-		if(DEBUG_CONDITION){
-			if(m_highPriority && nBytes > 0) {
-				std::cout << "send annc:     " << nBytes << " " << Print() << std::endl;
-			}
 		}
 	}
 
@@ -450,7 +374,7 @@ namespace ns3
 		if(m_socket == NULL) throw -1;
 
 		if(DEBUG_CONDITION){
-			std::cout << "\tSEND PKT:     seq:" << m_sent << " " << Print() << "  -> pktInBuffer:" << BytesInBuffer() << std::endl;
+			std::cout << "\t  SEND:     seq:" << m_sent << " " << Print() << "  -> pktInBuffer:" << BytesInBuffer() << std::endl;
 		}
 
 		TimelyHeader tHeader;
@@ -462,7 +386,7 @@ namespace ns3
 		// Set ACK needed flag for each K packets OR when it's the last packet to be sent.
 		if (BytesInBuffer() <= m_pktSize || (m_sent + m_pktSize) / m_burstSize > m_burstCnt){
 			if(DEBUG_CONDITION){
-				std::cout << "\tNEEDED     bCnt:" << m_burstCnt << "  -> pktInBuffer:" << BytesInBuffer() << std::endl;
+				std::cout << "  NEEDED   " << "  waitigfor: " << tHeader.GetSeq() + m_pktSize << ", seq: " << tHeader.GetSeq() << ",      bCnt:" << m_burstCnt << std::endl;
 			}
 			tHeader.SetAckNeeded();
 			// No need to cancel the previous timeout event. 
@@ -492,10 +416,9 @@ namespace ns3
 	}
 
 	void TimelySender::PacketSentSuccessfully(uint32_t sentSize){
-		if(DEBUG_CONDITION){
-			std::cout << "\tPACKET Sent Successfully: pktSize:" << sentSize << ", m_sent: " << m_sent << std::endl;
-		}
-
+		// if(DEBUG_CONDITION){
+		// 	std::cout << "\tPACKET Sent Successfully: pktSize:" << sentSize << ", m_sent: " << m_sent << std::endl;
+		// }
 		m_sent += sentSize;
 		m_burstCnt = m_sent / m_burstSize;
 	}
@@ -537,11 +460,12 @@ namespace ns3
 				m_sendEvent = Simulator::Schedule(m_sleep, &TimelySender::Send, this);
 			} else if(tHeader.IsAck()) {
 				if(DEBUG_CONDITION){
-					std::cout << "\tACK     seqNum:" << seqNum << ", rcvd:" << m_received << std::endl;
+					std::cout << "\tACK RCVD     seqNum:" << seqNum << ", rcvd:" << m_received << std::endl;
 				}
 
 				if(seqNum < m_received) {
 					std::cout << seqNum << "   ---     " << m_received << std::endl;
+					tHeader.Print(std::cout);
 					std::cout << "Invalid State 112: " <<  Print() << std::endl; exit(1112); 
 				}
 				
