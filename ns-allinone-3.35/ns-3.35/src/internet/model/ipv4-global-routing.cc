@@ -222,7 +222,13 @@ Ipv4GlobalRouting::LookupGlobal (Ipv4Address dest, Ptr<NetDevice> oif)
       uint32_t selectIndex;
       if (m_randomEcmpRouting)
         {
+#if 0
           selectIndex = m_rand->GetInteger (0, allRoutes.size ()-1);
+#endif
+#if 1
+          srand(dest.Get());
+          selectIndex = rand() % allRoutes.size ();
+#endif
         }
       else 
         {
