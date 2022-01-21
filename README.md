@@ -52,10 +52,9 @@ For more, please check the code.
 | --TimelyThLow | Command-Line | Timely lower threshold | "70us"
 | --TimelyThHigh | Command-Line | Timely higher threshold | "170us"
 
-# Refernces
+# Credits
 - **Timely** implementation is based on this [repo](https://github.com/bobzhuyb/ns3-rdma)
 - **Burst Distributions** are obtained from the [Homa](https://dl.acm.org/doi/abs/10.1145/3230543.3230564) project 
-- **pFabric** the implementation is done based on the paper. 
 
 # Known Issues
 - There is no PFC implementation.
